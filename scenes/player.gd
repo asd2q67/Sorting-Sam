@@ -16,52 +16,21 @@ signal carry1()
 signal carry2()
 signal carry3()
 signal done()
+signal fill()
  
+var current_state = States.new("counter",false,false,false,'waiting')
 
-var current_state = {
-	"pos" : "counter",
-	"is_carrying" : false,
-	"need_charge" : true,
-	"table_state_empty" : true,
-	"action" : 'wating'
-}
+var test_state = States.new("cargo_table",true,true,true,'waiting')
 
+var goal_pickup_cargo = States.new("cargo_table",true,null,null,"pickup")
 
-var goal_pickup_cargo ={
-	"pos" : "cargo_table",
-	"is carrying" : true,
-	"need_charge" : null,
-	"table_state_empty" : null
-}
+var goal_sort_luffy = States.new("luffy",false,null,null,'putdown')
 
-var goal_sort_luffy = {
-	"pos" : "luffy",
-	"is carrying" : false,
-	"need_charge" : null,
-	"table_state_empty" : null
-}
+var goal_sort_nami = States.new("nami",false,null,null,'putdown')
 
-var goal_sort_nami = {
-	"pos" : "nami",
-	"is carrying" : false,
-	"need_charge" : null,
-	"table_state_empty" : null
-}
+var goal_sort_zoro = States.new("zoro",false,null,null,'putdown')
 
-var goal_sort_zoro = {
-	"pos" : "zoro",
-	"is carrying" : false,
-	"need_charge" : null,
-	"table_state_empty" : null
-}
-
-var goal_charge_battery = {
-	"pos" : "charge_station",
-	"is carrying" : null,
-	"need_charge" : false,
-	"table_state_empty" : null
-}
-
+var goal_charge_battery = States.new("charge_station",null,false,null,"charge")
 
 var _target
 var charge_station = Vector2(64+16,64+16)
@@ -69,7 +38,7 @@ var table_location = Vector2(832-64,160)
 var luffy_location = Vector2(160,320)
 var zoro_location = Vector2(160 + 64* 8 + 32,320)
 var nami_location = Vector2(160 + 64*5 ,320)
-var type_carried
+var type_carried = 0 #1 is luffy - 2 is nami - 3 is zoro
 var weight_carried
 var table_state_empty
 
@@ -79,60 +48,89 @@ func _on_to_cargo_table_pressed():
 
 func _ready():
 	_target = self.position
-	current_state["is_carrying"] = false
-	current_state["need_charge"] = false
-	current_state["table_state_empty"] = true
+	emit_signal("fill")
 	
 
 func _process(delta):
-	print(a_star(current_state,goal_sort_luffy))
-	#action_to_cargo_table(delta)
+	var plan = a_star(current_state,goal_selector(current_state))
+	plan_deployment(plan,delta)
 	
+	
+	
+	#	[THIS IS THE GOAL ORIENTED SESSION]
+#In goal oriented method we use greedy algorim to select goal depend on drone current state
+func goal_selector(state):
+	if state.need_charge:
+		return goal_charge_battery
+	if !state.is_carrying:
+		return goal_pickup_cargo
+	#1 is luffy - 2 is nami - 3 is zoro
+	if state.is_carrying:
+		if type_carried == 1:
+			return goal_sort_luffy
+		if type_carried == 2:
+			return goal_sort_nami
+		if type_carried == 3:
+			return goal_sort_zoro
+		
+
 
 	#	[THIS IS THE ACTION PLANER SESSION]
 #	This bot use A* search algorim to design the action plan
 #	A* need a heuristic function and a neighbor function to process
 
 #	first is the heuristic function(caculate the estimate cost of current to goal)
-func cmp_dictionary(dic_a,dic_b):
-	return dic_a.hash() == dic_b.hash()
+func cmp_state(state_a,state_b):
+
+	
+	return (state_a.pos == state_b.pos
+	&& ( state_a.is_carrying == state_b.is_carrying || state_a.is_carrying == null || state_b.is_carrying == null)
+	&& (state_a.need_charge == state_a.need_charge || state_a.need_charge == null || state_b.need_charge == null)
+	&& (state_a.table_state_empty == state_b.table_state_empty || state_a.table_state_empty == null || state_b.table_state_empty == null)
+	&& (state_a.action == state_b.action || state_a.action == null || state_b.action == null))
 
 func heuristic(a,b):
-	var cost = 4
+	var cost = 0
 	if a.is_carrying != null:
-		if a.is_carrying == b.is_carrying:
-			cost-=1
-	if a.need_charge != null:
-		if a.need_charge == b.need_charge:
-			cost-=1
-	if a.table_state_empty != null:
-		if a.table_state_empty == b.table_state_empty:
-			cost-=1
-	if a.pos != null:
-		if a.pos == b.pos:
-			cost-=1
+		if a.is_carrying != b.is_carrying:
+			cost+=1
+
+	if b.need_charge != null:
+		if a.need_charge != b.need_charge:
+			cost+=1
+
+	if b.table_state_empty != null:
+		if a.table_state_empty != b.table_state_empty:
+			cost+=1
+
+	if b.pos != null:
+		if a.pos != b.pos:
+			cost+=1
+
 	return cost
 
 #	second is neighbor function which is to show all posible action 
 #	related to current state and it's cost -> defaut = 1
 
-func neighbor(state):
+func neighbors(state):
 	var pos_list = ['cargo_table', 'luffy', 'nami','zoro','charge_station']
 	var states = []
-
-	for pos in pos_list:
-		var t_state = state.duplicate()
-		states += [move(t_state,pos)]
+	
+#	print(state.pos)
+	
+	for position in pos_list:
+		var t_state = States.new(state.pos,state.is_carrying,state.need_charge,state.table_state_empty,state.action)
+		states += [move(t_state,position)]
 	for i in range(4):
-		
+
 		if(i==0):
-			var t_state = state.duplicate()
+			var t_state = States.new(state.pos,state.is_carrying,state.need_charge,state.table_state_empty,state.action)
 			states += [charge(t_state)]
 		elif i==1:
-			var t_state = state.duplicate()
+			var t_state = States.new(state.pos,state.is_carrying,state.need_charge,state.table_state_empty,state.action)
 			states += [putdown(t_state)]	
 		elif i==2:
-			var t_state = state.duplicate()
+			var t_state = States.new(state.pos,state.is_carrying,state.need_charge,state.table_state_empty,state.action)
 			states += [pickup(t_state)]
 	var result = []
 	for r_state in states:
@@ -143,17 +141,19 @@ func neighbor(state):
 	
 #	this is list of acton and its change to the state
 
-func move(state,to):
-	if state.pos == to:
+func move(a,to):
+	if a.pos == to:
 		return null
 		
-	state.pos = to
-	state.action = 'move to ' + to
+	a.pos = to
+	a.action = 'move to ' + to
 	
-	return state
+	return a
 	
 func pickup(state):
 	if state.is_carrying:
+		return null
+	if state.pos != "cargo_table" :
 		return null
 
 	state.is_carrying = true
@@ -164,13 +164,15 @@ func pickup(state):
 func putdown(state):
 	if !state.is_carrying:
 		return null
+	if state.pos != "luffy" && state.pos != "zoro" && state.pos != "nami":
+		return null
 
 	state.is_carrying = false
 	state.action = 'putdown'
 	return state
 	
 func charge(state):
-	if !state.need_charge:
+	if (!state.need_charge || state.pos != 'charge_station'):
 		return null
 	
 
@@ -183,61 +185,106 @@ func charge(state):
 #Now we move to the main function of Action planning called A* searching algorithm
 func a_star(start, goal):
 	var open_set = [start]
-	var came_from = []
+	var came_from = {}
 	
 	#G-score is cost of start node to N
 	
-	var g_score = []
-	g_score[start] = 0
+	var g_score = {}
+	g_score[start.action] = 0
 	
 	# Estimated cost of path from start node through n to goal
 	# This is an estimate of the total path cost: f_score = g_score + heuristic
-	var f_score = []
-	f_score[start.hash] = heuristic(start, goal)
+	var f_score = {}
+	f_score[start.action] = heuristic(start, goal)
 	
 	#now is the selecting session
-	while open_set.len() >0:
+	var count = 0
+	while open_set.size() >0:
+#		count+=1
+#		print(count)
 		#first we chose current -> the node with the lowest f_Score
 		var current = open_set[0]
 		var c = 0
-		var index
+		var index = 0
+		
 		for i in open_set:
-			if f_score[i] < current:
-				current = f_score[i]
+#			print("F-score of: " + i.action + ": " + str(f_score[i.action]))
+			if f_score[i.action] <= f_score[current.action]:
+				current = i
 				index = c
+				
 			c+=1
-		open_set.pop(index)
+		open_set.pop_at(index)
+
+#		print(current)
+
+
+#		print("current neighbor is: ", neighbors(current) )
+#		print("open set is: ",open_set)
+#		print("came from is: ", came_from)
+#		print("G-score set is: ", g_score)
+		if cmp_state(current,goal):
+#			print("done")
+			return reconstruct_path(came_from,current)
 		
-		if current.hash() == goal.hash():
-			reconstruct_path(came_from,current)
 		
-		for neighbor in neighbor(current):
-			var temp_g_score = g_score.get(current,100000000) + 1
-			if temp_g_score < g_score.get(neighbor,100000000):
-				came_from[neighbor] = current
-				g_score.neighbor = temp_g_score
-				f_score.neighbor = g_score[neighbor] + heuristic(neighbor,goal)
-			
+		
+		for neighbor in neighbors(current):
+#			print(neighbor.action)
+			var temp_g_score = g_score.get(current.action,100000000) + 1
+#			print(temp_g_score ," : ", str(g_score.get(neighbor.action,100000000)))
+			if temp_g_score < g_score.get(neighbor.action,100000000):
+				came_from[neighbor.action] = current
+				g_score[neighbor.action] = temp_g_score
+				f_score[neighbor.action] = g_score[neighbor.action] + heuristic(neighbor,goal)
+				
 				if !(neighbor in open_set):
+#					print("added: " + neighbor.action )
 					open_set.append(neighbor)
+#		if count == 3 : return
+
+
 
 func reconstruct_path(came_from, current):
-	var total_path = [current]
 	
-	while current in came_from:
-		current = came_from[current]
-		total_path.insert(0,current)
+	var total_path = [current.action]
+	while current.action in came_from:
+		current = came_from[current.action]
+		total_path.insert(0,current.action)
 		
+	total_path.pop_at(0)
 	return total_path
-
-
-
+	
 
 # end of action planing
-func action_to_cargo_table(delta):
-	_pick_cargo_table_position()
-	if self.position.distance_to(_target) > 1 :
-		var direction = self.position.direction_to(_target)
+
+#[THIS IS THE PLAN DEPLOYMENT SESSION]
+# after we have the plan we need to convert that plan to real designed action 
+func plan_deployment(plan,delta):
+	var target_list = {
+		'cargo_table' : table_location,
+		'luffy' : luffy_location,
+		'nami' : nami_location,
+		'zoro' : zoro_location,
+		'charge_station' : charge_station
+	}
+	
+	for i in plan:
+		if 'move to' in i:
+			action_to_target(delta,target_list[i.substr(8,i.length()-8)])
+		if 'charge' in i:
+			action_charge()
+		if 'pickup' in i:
+			action_select()
+		if 'putdown' in i:
+			action_putdown()
+
+
+# [THIS IS DESIGNED ACTION SESSION]
+# below is all the designed action that can work in the program
+func action_to_target(delta,target):
+	if self.position.distance_to(target) > 1 :
+		var direction = self.position.direction_to(target)
 		move_and_collide(direction * delta * 100)
 		emit_signal("moving")
 	else:
@@ -246,55 +293,41 @@ func action_to_cargo_table(delta):
 func action_stop():
 	_target = self.position
 
-func action_to_charge_station(delta):
+func action_charge():
 	_pick_charger_station()
-	if self.position.distance_to(_target) > 1 :
-		var direction = self.position.direction_to(_target)
-		move_and_collide(direction * delta * 100)
-		emit_signal("moving")
-	else:
+	if self.position.distance_to(_target) <= 1 :
 		emit_signal("stoping")
 		emit_signal("charging")
-		current_state["need_charge"] = false
 	
-func action_select_and_move(delta):
+func action_select():
+	if self.position.distance_to(table_location) <= 1 :
+		var count = 0;
 	
-	if _target == table_location:	
-		emit_signal("selecting")
-	if self.position.distance_to(_target) > 1 :
-		var direction = self.position.direction_to(_target)
-		move_and_collide(direction * delta * 100)
-		emit_signal("moving")
-	else:
-		emit_signal("stoping")
-		if self.position.distance_to(luffy_location) <= 1:
-			emit_signal("increse_luffy")
-			current_state["is_carrying"] = false
-			emit_signal("done")
-				
-		if self.position.distance_to(nami_location) <= 1:
-			emit_signal("increse_nami")
-			current_state["is_carrying"] = false
-			emit_signal("done")
-				
-		if self.position.distance_to(zoro_location) <= 1:
-			emit_signal("increse_zoro")
-			current_state["is_carrying"] = false
-			emit_signal("done")	
-			
+		if count == 0:	
+			emit_signal("selecting")
+			count+=1
 
-
-
-#	set_process(false)
-	# warning-ignore:return_value_discarded
-
+func action_putdown():
+	var table_list = {
+		'luffy' : luffy_location,
+		'nami' : nami_location,
+		'zoro' : zoro_location
+	}
+	var type_list = ['none','luffy','nami','zoro']
+	
+	if self.position.distance_to(table_list[type_list[type_carried]]) <= 1 :
+		var cmd = "increse_" + type_list[type_carried]
+		emit_signal(cmd)
+		current_state["is_carrying"] = false
+		emit_signal("done")
+		type_carried = 0
 
 func _pick_cargo_table_position():
-	_target = Vector2(832-64,160)
+	_target = table_location
 	
 	print("to cargo table")
 
-func _pick(type,weight):
+func _pickup(type,weight):
 	if type == 1:
 		_pick_luffy_table()
 		emit_signal("carry1")
@@ -309,7 +342,7 @@ func _pick(type,weight):
 #	table._on_delete_one_pressed()
 	
 func _pick_luffy_table():
-	_target = Vector2(160,320)
+	_target = luffy_location
 	print("to luffy table")
 	
 func _pick_nami_table():
@@ -320,11 +353,11 @@ func _pick_zoro_table():
 func _pick_charger_station():
 	_target = charge_station
 	
-func pick_up(Luffy_cargo):
-	Luffy_cargo._pickup()
 
 
-
+# [THIS IS THE RESPONSE SESSION]
+# below this comment is all the response funtion we use 
+# for responing to to the signal from another script
 
 func _on_to_luffy_table_pressed():
 	_pick_luffy_table()
@@ -339,7 +372,7 @@ func _on_table_chose(type, weight):
 	type_carried = type
 	weight_carried = weight
 	print(type_carried,type_carried)
-	_pick(type_carried,weight_carried)
+	_pickup(type_carried,weight_carried)
 	current_state["is_carrying"] = true
 
 

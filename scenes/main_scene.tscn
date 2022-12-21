@@ -497,6 +497,7 @@ margin_left = 424.0
 margin_top = 464.0
 margin_right = 464.0
 margin_bottom = 478.0
+text = "0"
 script = ExtResource( 13 )
 
 [node name="Zoro_counter" type="Label" parent="."]
@@ -504,6 +505,7 @@ margin_left = 712.0
 margin_top = 464.0
 margin_right = 752.0
 margin_bottom = 478.0
+text = "0"
 script = ExtResource( 12 )
 
 [node name="world_timer" type="Timer" parent="."]
@@ -523,6 +525,7 @@ script = ExtResource( 9 )
 [connection signal="done" from="Drone1" to="Luffy_counter" method="_on_Drone1_done"]
 [connection signal="done" from="Drone1" to="Nami_counter" method="_on_Drone1_done"]
 [connection signal="done" from="Drone1" to="Zoro_counter" method="_on_Drone1_done"]
+[connection signal="fill" from="Drone1" to="table" method="_on_Drone1_fill"]
 [connection signal="increse_luffy" from="Drone1" to="Drone1/Carry_luffy" method="_on_Drone1_increse_luffy"]
 [connection signal="increse_luffy" from="Drone1" to="Luffy_counter" method="_on_Drone1_increse_luffy"]
 [connection signal="increse_nami" from="Drone1" to="Drone1/Carry_nami" method="_on_Drone1_increse_nami"]

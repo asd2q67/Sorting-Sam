@@ -12,6 +12,8 @@ var _is_table_empty
 func _process(delta):
 	_is_table_empty = cargo_list.empty()
 	emit_signal("table_empty",_is_table_empty)
+	if(cargo_list.size() <= 0):
+		_on_refill_pressed()
 
 func _on_refill_pressed():
 	var cargos = [cargo1,cargo2,cargo3]
@@ -45,3 +47,5 @@ func _on_Drone1_selecting():
 	
 
 
+func _on_Drone1_fill():
+	_on_refill_pressed()
