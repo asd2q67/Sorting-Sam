@@ -16,5 +16,5 @@ func _init(init_pos,init_is_carrying,init_need_charge,init_table_state_empty,ini
 	action = init_action
 	
 func _to_string():
-	return "[pos:" + pos + ", is_carrying: " + str(is_carrying) + " need_charge: " + str(need_charge) + ", table_state_empty" + str(table_state_empty) + ", action:" + action + "]"
+	return "[pos:" + pos + ", is_carrying: " + str(is_carrying) + ", need_charge: " + str(need_charge) + ", table_state_empty: " + str(table_state_empty) + ", action:" + action + "]"
 

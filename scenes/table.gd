@@ -17,7 +17,7 @@ func _process(delta):
 
 func _on_refill_pressed():
 	var cargos = [cargo1,cargo2,cargo3]
-	
+	randomize()
 	for i in rand_range(1,4):
 		var kinds = (cargos[randi() % 3])
 		var cargo = kinds.instance()

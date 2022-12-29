@@ -17,10 +17,14 @@ signal carry2()
 signal carry3()
 signal done()
 signal fill()
+signal state_signal(state)
+signal plan_signal(plan)
  
-var current_state = States.new("counter",false,false,false,'waiting')
+var start_state = States.new("counter",false,false,false,'waiting')
 
 var test_state = States.new("cargo_table",true,true,true,'waiting')
+
+var current_state = States.new("counter",false,false,false,'waiting')
 
 var goal_pickup_cargo = States.new("cargo_table",true,null,null,"pickup")
 
@@ -39,11 +43,9 @@ var luffy_location = Vector2(160,320)
 var zoro_location = Vector2(160 + 64* 8 + 32,320)
 var nami_location = Vector2(160 + 64*5 ,320)
 var type_carried = 0 #1 is luffy - 2 is nami - 3 is zoro
-var weight_carried
+var weight_carried = 0
 var table_state_empty
-
-func _on_to_cargo_table_pressed():
-	pass
+var fCost
 	
 
 func _ready():
@@ -52,8 +54,10 @@ func _ready():
 	
 
 func _process(delta):
-	var plan = a_star(current_state,goal_selector(current_state))
+	var plan = a_star(start_state,goal_selector(start_state))
 	plan_deployment(plan,delta)
+	emit_signal("state_signal",str(current_state))
+	emit_signal("plan_signal",plan)
 	
 	
 	
@@ -61,10 +65,11 @@ func _process(delta):
 #In goal oriented method we use greedy algorim to select goal depend on drone current state
 func goal_selector(state):
 	if state.need_charge:
-		return goal_charge_battery
+		if charge_consider(_target):
+			return goal_charge_battery
 	if !state.is_carrying:
 		return goal_pickup_cargo
-	#1 is luffy - 2 is nami - 3 is zoro
+			#1 is luffy - 2 is nami - 3 is zoro
 	if state.is_carrying:
 		if type_carried == 1:
 			return goal_sort_luffy
@@ -73,7 +78,17 @@ func goal_selector(state):
 		if type_carried == 3:
 			return goal_sort_zoro
 		
-
+func charge_consider(target):
+	var to_target_distant = self.position.distance_to(target)
+	var to_target_charge = self.position.distance_to(charge_station)
+	var target_to_charge = target.distance_to(charge_station)
+	var to_charge_consume_battery = (to_target_charge / 92) * (weight_carried + 1)
+	var do_goal_and_charge_consume_battery = (to_target_distant / 92) * (weight_carried + 1) + (target_to_charge / 92) 
+	if to_charge_consume_battery <= do_goal_and_charge_consume_battery:
+		return true
+	return false
+#	return weight_carried
+	
 
 	#	[THIS IS THE ACTION PLANER SESSION]
 #	This bot use A* search algorim to design the action plan
@@ -271,7 +286,8 @@ func plan_deployment(plan,delta):
 	
 	for i in plan:
 		if 'move to' in i:
-			action_to_target(delta,target_list[i.substr(8,i.length()-8)])
+			action_to_target(delta,target_list[i.substr(8,i.length()-8)],i.substr(8,i.length()-8))
+			
 		if 'charge' in i:
 			action_charge()
 		if 'pickup' in i:
@@ -282,13 +298,21 @@ func plan_deployment(plan,delta):
 
 # [THIS IS DESIGNED ACTION SESSION]
 # below is all the designed action that can work in the program
-func action_to_target(delta,target):
+func action_to_target(delta,target,location):
+	_target = target
 	if self.position.distance_to(target) > 1 :
 		var direction = self.position.direction_to(target)
 		move_and_collide(direction * delta * 100)
 		emit_signal("moving")
+		var act = "move to " + str(location)
+		current_state.action = act
+#		print(location)
 	else:
+		
 		emit_signal("stoping")
+	if self.position.distance_to(target) <= 1 :
+		current_state.pos = location
+		
 		
 func action_stop():
 	_target = self.position
@@ -298,6 +322,7 @@ func action_charge():
 	if self.position.distance_to(_target) <= 1 :
 		emit_signal("stoping")
 		emit_signal("charging")
+		current_state.action = "charge"
 	
 func action_select():
 	if self.position.distance_to(table_location) <= 1 :
@@ -318,9 +343,11 @@ func action_putdown():
 	if self.position.distance_to(table_list[type_list[type_carried]]) <= 1 :
 		var cmd = "increse_" + type_list[type_carried]
 		emit_signal(cmd)
-		current_state["is_carrying"] = false
+		start_state["is_carrying"] = false
+		current_state.is_carrying = false
 		emit_signal("done")
 		type_carried = 0
+		current_state.action = "putdown"
 
 func _pick_cargo_table_position():
 	_target = table_location
@@ -329,27 +356,24 @@ func _pick_cargo_table_position():
 
 func _pickup(type,weight):
 	if type == 1:
-		_pick_luffy_table()
+
 		emit_signal("carry1")
 	elif type == 3:
-		_pick_zoro_table()
+
 		emit_signal("carry3")
 	else:
-		_pick_nami_table()
+
 		emit_signal("carry2")
 	emit_signal("weightchange",weight)
+	current_state.action = "pick up"
 	
 #	table._on_delete_one_pressed()
 	
-func _pick_luffy_table():
-	_target = luffy_location
-	print("to luffy table")
-	
-func _pick_nami_table():
-	_target = nami_location
 
-func _pick_zoro_table():
-	_target = zoro_location
+	
+
+
+
 func _pick_charger_station():
 	_target = charge_station
 	
@@ -358,9 +382,6 @@ func _pick_charger_station():
 # [THIS IS THE RESPONSE SESSION]
 # below this comment is all the response funtion we use 
 # for responing to to the signal from another script
-
-func _on_to_luffy_table_pressed():
-	_pick_luffy_table()
 	
 
 
@@ -373,12 +394,15 @@ func _on_table_chose(type, weight):
 	weight_carried = weight
 	print(type_carried,type_carried)
 	_pickup(type_carried,weight_carried)
-	current_state["is_carrying"] = true
+	start_state["is_carrying"] = true
+	current_state.is_carrying = true
 
 
 func _on_BatteryBar2_low_battery(is_low):
-	current_state["need_charge"] = is_low
+	start_state["need_charge"] = is_low
+	current_state.need_charge = is_low
 
 
 func _on_table_table_empty(is_empty):
-	current_state["table_state_empty"] = is_empty
+	start_state["table_state_empty"] = is_empty
+	current_state.table_state_empty = is_empty
